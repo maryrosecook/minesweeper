@@ -7,49 +7,54 @@ function createBoard(cellsAcross, cellsDown) {
 };
 
 function draw(screen, board) {
-  drawFrame(screen);
   drawCells(screen, board);
-  drawMine(screen);
 };
 
-function drawFrame(screen) {
-  var screenSize = {
-    x: screen.canvas.width,
-    y: screen.canvas.height
+function cellDimensions(canvas, board) {
+  return {
+    w: canvas.width / board.cellsAcross,
+    h: canvas.height / board.cellsDown
   };
+};
 
-  screen.strokeRect(0, 0, screenSize.x, screenSize.y);
+function cellPosition(canvas, board, cell) {
+  var d = cellDimensions(canvas, board);
+  d.x = cell.refX * d.w;
+  d.y = cell.refY * d.h;
+  return d;
 };
 
 function drawCells(screen, board) {
-  var w = screen.canvas.width / board.cellsAcross;
-  var h = screen.canvas.height / board.cellsDown;
   boardToCells(board).forEach(function(cell) {
-    var x = cell.refX;
-    var y = cell.refY;
-    screen.strokeRect(x * w, y * h, w, h);
+    drawCell(screen, board, cell);
   });
 };
 
-function drawMine(screen) {
+function drawCell(screen, board, cell) {
+  var p = cellPosition(screen.canvas, board, cell);
+  screen.strokeRect(p.x, p.y, p.w, p.h);
+  if (cell.contents === "m") {
+    drawMine(screen, p);
+  }
+};
+
+function eventCoordinates(e) {
+  return { x: e.pageX, y: e.pageY };
+};
+
+function drawMine(screen, d) {
   var blackColor = 'rgba(0, 0, 0, 1)';
   var color2 = 'rgba(0, 0, 0, 1)';
   var color3 = 'rgba(255, 255, 255, 1)';
 
-  var x = 2;
-  var y = 2;
-  var w = 16;
-  var h = 16;
-
-
-  oval(screen, x, y, w, h);
+  oval(screen, d.x, d.y, d.w, d.h);
   screen.fillStyle = color2;
   screen.fill();
   screen.strokeStyle = blackColor;
   screen.lineWidth = 1;
   screen.stroke();
 
-  oval(screen, x + 2, y + 2, 4, 4);
+  oval(screen, d.x + 2, d.y + 2, 4, 4);
   screen.fillStyle = color3;
   screen.fill();
   screen.strokeStyle = blackColor;
@@ -75,7 +80,7 @@ function boardToCells(board) {
   return boardSizeToCellGridReferences(board.cellsAcross, board.cellsDown)
     .map(function(c) {
       if (cellKey(c) in board.mines) {
-        c.contents = "b";
+        c.contents = "m";
       } else {
         c.contents = " ";
       }
@@ -110,9 +115,56 @@ function log(obj) {
   console.log(JSON.stringify(obj));
 };
 
+function neighborReferences(board, cellReference) {
+  function inBounds(r) {
+    return r.refX >= 0 && r.refX < board.cellsAcross &&
+      r.refY >= 0 && r.refY < board.cellsDown;
+  };
+
+  function same(r1, r2) {
+    return r1.refX === r2.refX &&
+      r1.refY === r2.refY;
+  };
+
+  var neighbors = [];
+  for (var y = -1; y < 2; y++) {
+    for (var x = -1; x < 2; x++) {
+      var neighborReference = {
+        refX: cellReference.refX + x,
+        refY: cellReference.refY + y
+      };
+
+      if (inBounds(neighborReference) &&
+          !same(neighborReference, cellReference)) {
+        neighbors.push(neighborReference);
+      }
+    }
+  }
+
+  return neighbors;
+};
+
+function emitCellClickedEvent(cellReference, board) {
+  log(neighborReferences(board, cellReference));
+  if (cellKey(cellReference) in board.mines) {
+    console.log("boom")
+  }
+};
+
+function setupEvents(canvas, board) {
+  var d = cellDimensions(canvas, board);
+  canvas.addEventListener("mouseup", function(e) {
+    var c = eventCoordinates(e);
+    var refX = ~~(c.x / d.w);
+    var refY = ~~(c.y / d.h);
+    emitCellClickedEvent({ refX: refX, refY: refY }, board);
+  });
+};
+
 var MINE_CHANCE = 0.1;
 window.addEventListener("load", function() {
   var screen = document.getElementById("screen").getContext("2d");
   var board = createBoard(20, 20);
+  setupEvents(screen.canvas, board);
   draw(screen, board);
 });
