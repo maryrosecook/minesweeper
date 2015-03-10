@@ -1,6 +1,6 @@
 function createBoard(cellsAcross, cellsDown) {
   return {
-    mines: createMines(cellsAcross, cellsDown),
+    cells: generateCells(cellsAcross, cellsDown),
     cellsAcross: cellsAcross,
     cellsDown: cellsDown
   };
@@ -25,18 +25,21 @@ function cellPosition(canvas, board, cell) {
 };
 
 function drawCells(screen, board) {
-  boardToCells(board).forEach(function(cell) {
-    drawCell(screen, board, cell);
+  var cells = board.cells;
+  Object.keys(cells).forEach(function(cellKey) {
+    var p = cellPosition(screen.canvas, board, cellKeyToReference(cellKey));
+    screen.strokeRect(p.x, p.y, p.w, p.h);
+    var cellContents = cells[cellKey];
+    if (cellContents === "m") {
+      drawMine(screen, p);
+    } else {
+      screen.strokeText(cellContents,
+                        p.x + p.w / 2,
+                        p.y + p.h / 2);
+    }
   });
 };
 
-function drawCell(screen, board, cell) {
-  var p = cellPosition(screen.canvas, board, cell);
-  screen.strokeRect(p.x, p.y, p.w, p.h);
-  if (cell.contents === "m") {
-    drawMine(screen, p);
-  }
-};
 
 function eventCoordinates(e) {
   return { x: e.pageX, y: e.pageY };
@@ -76,30 +79,51 @@ function cellKey(cell) {
   return cell.refX + ":" + cell.refY;
 };
 
-function boardToCells(board) {
-  return boardSizeToCellGridReferences(board.cellsAcross, board.cellsDown)
-    .map(function(c) {
-      if (cellKey(c) in board.mines) {
-        c.contents = "m";
-      } else {
-        c.contents = " ";
-      }
-
-      return c;
-    });
+function cellKeyToReference(cellKey) {
+  var refs = cellKey.split(":");
+  return { refX: parseInt(refs[0], 10), refY: parseInt(refs[1], 10) };
 };
 
-function boardSizeToCellGridReferences(cellsAcross, cellsDown) {
-  var gridReferences = [];
-
-  for (var refY = 0; refY < cellsAcross; refY++) {
-    for (var refX = 0; refX < cellsDown; refX++) {
-      gridReferences.push({ refX: refX, refY: refY });
+function generateCells(cellsAcross, cellsDown) {
+  var mineKeys = [];
+  for (var i = 0; i < cellsAcross * cellsDown; i++) {
+    if (Math.random() < MINE_CHANCE) {
+      mineKeys.push(cellKey({ refX: i % cellsDown, refY: ~~(i / cellsAcross) }));
     }
   }
 
-  return gridReferences;
-}
+  return mineKeys.reduce(function(memo, mineKey) {
+    memo[mineKey] = "m";
+    neighborReferences(cellsAcross, cellsDown, mineKey)
+      .forEach(function(neighborReference) {
+        var neighborKey = cellKey(neighborReference);
+        if (memo[neighborKey] !== "m") {
+          memo[neighborKey] = memo[neighborKey] || 0;
+          memo[neighborKey] += 1;
+        }
+      });
+
+    return memo;
+  }, {});
+};
+
+function boardSizeToCells(cellsAcross, cellsDown) {
+  var cells = [];
+
+  for (var refY = 0; refY < cellsAcross; refY++) {
+    for (var refX = 0; refX < cellsDown; refX++) {
+      cells.push({ refX: refX, refY: refY });
+    }
+  }
+
+  return cells;
+};
+
+function possiblyGenerateMine(cell) {
+  if (Math.random() < MINE_CHANCE) {
+    cell.contents = "m";
+  }
+};
 
 function createMines(cellsAcross, cellsDown) {
   return boardSizeToCellGridReferences(cellsAcross, cellsDown)
@@ -115,10 +139,10 @@ function log(obj) {
   console.log(JSON.stringify(obj));
 };
 
-function neighborReferences(board, cellReference) {
+function neighborReferences(cellsAcross, cellsDown, cellKey) {
   function inBounds(r) {
-    return r.refX >= 0 && r.refX < board.cellsAcross &&
-      r.refY >= 0 && r.refY < board.cellsDown;
+    return r.refX >= 0 && r.refX < cellsAcross &&
+      r.refY >= 0 && r.refY < cellsDown;
   };
 
   function same(r1, r2) {
@@ -126,6 +150,7 @@ function neighborReferences(board, cellReference) {
       r1.refY === r2.refY;
   };
 
+  var cellReference = cellKeyToReference(cellKey);
   var neighbors = [];
   for (var y = -1; y < 2; y++) {
     for (var x = -1; x < 2; x++) {
@@ -145,7 +170,6 @@ function neighborReferences(board, cellReference) {
 };
 
 function emitCellClickedEvent(cellReference, board) {
-  log(neighborReferences(board, cellReference));
   if (cellKey(cellReference) in board.mines) {
     console.log("boom")
   }
